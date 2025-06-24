@@ -74,7 +74,7 @@ class DeployCommand:
         template_path = os.path.join(
             os.path.dirname(__file__), "templates", "ecs-service.yaml"
         )
-        with open(template_path, "r") as f:
+        with open(template_path, "r", encoding='utf-8') as f:
             template_content = f.read()
 
         template = Template(template_content)

@@ -16,7 +16,7 @@ class MCPConfigGenerator:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         # Write configuration
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding='utf-8') as f:
             json.dump(config, f, indent=2)
 
     @staticmethod

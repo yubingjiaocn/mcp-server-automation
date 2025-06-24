@@ -35,7 +35,7 @@ class BuildCommand:
                 api_url = (
                     f"https://api.github.com/repos/{owner}/{repo}/commits/{branch_ref}"
                 )
-                response = requests.get(api_url)
+                response = requests.get(api_url, timeout=30)
                 if response.status_code == 200:
                     commit_data = response.json()
                     git_hash = commit_data["sha"][:8]  # Use first 8 characters
@@ -87,7 +87,7 @@ class BuildCommand:
                 environment_variables,
             )
             dockerfile_full_path = os.path.join(temp_dir, "Dockerfile")
-            with open(dockerfile_full_path, "w") as f:
+            with open(dockerfile_full_path, "w", encoding='utf-8') as f:
                 f.write(dockerfile_content)
 
             # Step 3: Build Docker image
@@ -142,7 +142,7 @@ class BuildCommand:
             print("Using default branch: main")
 
         # Download and extract
-        response = requests.get(archive_url)
+        response = requests.get(archive_url, timeout=60)
         response.raise_for_status()
 
         zip_path = os.path.join(temp_dir, "repo.zip")
@@ -182,7 +182,7 @@ class BuildCommand:
     ) -> str:
         """Generate Dockerfile based on template."""
         if custom_dockerfile_path and os.path.exists(custom_dockerfile_path):
-            with open(custom_dockerfile_path, "r") as f:
+            with open(custom_dockerfile_path, "r", encoding='utf-8') as f:
                 return f.read()
 
         # Detect package manager and dependencies
@@ -194,7 +194,7 @@ class BuildCommand:
         template_path = os.path.join(
             os.path.dirname(__file__), "templates", "Dockerfile.j2"
         )
-        with open(template_path, "r") as f:
+        with open(template_path, "r", encoding='utf-8') as f:
             template_content = f.read()
 
         dockerfile_template = Template(template_content)
@@ -228,7 +228,7 @@ class BuildCommand:
 
         # Check for different dependency files and extract start command
         if os.path.exists(os.path.join(mcp_server_path, "pyproject.toml")):
-            with open(os.path.join(mcp_server_path, "pyproject.toml"), "r") as f:
+            with open(os.path.join(mcp_server_path, "pyproject.toml"), "r", encoding='utf-8') as f:
                 content = f.read()
                 if "[tool.uv]" in content:
                     package_info["manager"] = "uv"
@@ -371,7 +371,7 @@ class BuildCommand:
         """Extract start command from setup.py."""
         setup_py_path = os.path.join(mcp_server_path, "setup.py")
         try:
-            with open(setup_py_path, "r") as f:
+            with open(setup_py_path, "r", encoding='utf-8') as f:
                 content = f.read()
 
             # Look for entry_points console_scripts
