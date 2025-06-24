@@ -1,0 +1,17 @@
+# Example: Local build only (no ECR push, no deployment)
+# Use this for local development and testing
+
+build:
+  github_url: "https://github.com/awslabs/mcp"
+  subfolder: "src/aws-documentation-mcp-server"
+  
+  # Build locally only - image will be tagged as mcp-local/mcp-src-aws-documentation-mcp-server:latest
+  push_to_ecr: false
+
+deploy:
+  # Cannot deploy without ECR push
+  enabled: false
+
+# After building, test locally with:
+# docker run -p 8000:8000 mcp-local/mcp-src-aws-documentation-mcp-server:latest
+# npx @modelcontextprotocol/inspector http://localhost:8000/sse

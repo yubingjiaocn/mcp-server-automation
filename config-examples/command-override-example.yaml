@@ -1,0 +1,46 @@
+# Example: Using command override and environment variables
+# This configuration demonstrates the recently added features for customizing MCP server commands
+
+build:
+  github_url: "https://github.com/awslabs/mcp"
+  subfolder: "src/aws-documentation-mcp-server"
+  
+  # NEW FEATURE: Command Override
+  # Override the detected start command with a custom command
+  # This is useful when:
+  # - The auto-detection fails to find the correct command
+  # - You need custom arguments or flags
+  # - You want to use a different entry point
+  command_override:
+    - "python"
+    - "-m"
+    - "aws_documentation_mcp_server"
+    - "--verbose"
+  
+  # NEW FEATURE: Environment Variables
+  # Set custom environment variables in the Docker container
+  # These will be available to the MCP server at runtime
+  environment_variables:
+    LOG_LEVEL: "debug"
+    AWS_REGION: "us-east-1"
+    MCP_SERVER_NAME: "aws-docs-custom"
+    PYTHONPATH: "/app/mcp-server:/custom/path"
+    
+  # Standard build options
+  push_to_ecr: true
+  aws_region: "us-east-1"
+
+deploy:
+  enabled: true
+  service_name: "custom-aws-docs-mcp"
+  cluster_name: "my-ecs-cluster"
+  vpc_id: "vpc-12345678"
+  
+  alb_subnet_ids:
+    - "subnet-public-1"
+    - "subnet-public-2"
+  ecs_subnet_ids:
+    - "subnet-private-1"
+    
+  # Save the generated MCP client configuration
+  save_config: "./custom-mcp-config.json"

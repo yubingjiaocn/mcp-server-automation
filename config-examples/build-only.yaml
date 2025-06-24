@@ -1,0 +1,11 @@
+# Example: Build only (no deployment)
+# Use this when you just want to build and push Docker images to ECR
+
+build:
+  github_url: "https://github.com/awslabs/mcp"
+  subfolder: "src/aws-documentation-mcp-server"
+  push_to_ecr: true
+  
+deploy:
+  # Deployment disabled - will only build and push to ECR
+  enabled: false

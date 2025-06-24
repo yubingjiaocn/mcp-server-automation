@@ -1,0 +1,81 @@
+# MCP Automation Configuration Example
+# This file shows the new unified build + deploy configuration
+
+# EXAMPLE 1: Build and deploy with auto-generated image URI (most common)
+build:
+  # Required: GitHub repository URL for MCP server
+  github_url: "https://github.com/awslabs/mcp"
+  
+  # Optional: Subfolder path if MCP server is not in root
+  subfolder: "src/aws-documentation-mcp-server"
+  
+  # Optional: Git branch to build from (default: main)
+  # branch: "develop"
+  
+  # Required for deployment: Must be true to enable ECR push
+  push_to_ecr: true
+  
+  # Optional: Custom image name (default: auto-generated from repo/subfolder)
+  # image_name: "custom-filesystem-server"
+  
+  # Optional: Custom ECR repository (default: auto-generated from AWS account)
+  # ecr_repository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-repo"
+  
+  # Optional: AWS region (default: from AWS profile, fallback to us-east-1)
+  # aws_region: "us-west-2"
+  
+  # Optional: Custom Dockerfile path
+  # dockerfile_path: "./custom.Dockerfile"
+  
+  # Optional: Override auto-detected MCP server command
+  # command_override:
+  #   - "python"
+  #   - "-m"
+  #   - "my_server_module"
+  #   - "--verbose"
+  
+  # Optional: Set environment variables in the container
+  # environment_variables:
+  #   LOG_LEVEL: "debug"
+  #   AWS_REGION: "us-east-1"
+  #   MCP_SERVER_NAME: "custom-server"
+
+deploy:
+  # Required: Enable deployment (only works when push_to_ecr=true)
+  enabled: true
+  
+  # Required: ECS service name
+  service_name: "aws-docs-mcp-service"
+  
+  # Required: ECS cluster name  
+  cluster_name: "my-ecs-cluster"
+  
+  # Required: VPC ID where resources will be created
+  vpc_id: "vpc-12345678"
+  
+  # Required: Subnet configuration
+  # Option 1: Separate ALB and ECS subnets (recommended for security)
+  alb_subnet_ids:    # Public subnets for ALB (minimum 2 in different AZs)
+    - "subnet-public-1"
+    - "subnet-public-2"
+  ecs_subnet_ids:    # Private subnets for ECS tasks (minimum 1)
+    - "subnet-private-1"
+    - "subnet-private-2"
+  
+  # Option 2: Legacy format (same subnets for both ALB and ECS)
+  # subnet_ids:
+  #   - "subnet-12345678"
+  #   - "subnet-87654321"
+  
+  # Optional: Container port (default: 8000)
+  port: 8000
+  
+  # Optional: Task resources
+  cpu: 256     # CPU units (default: 256)
+  memory: 512  # Memory in MB (default: 512)
+  
+  # Optional: SSL certificate ARN for HTTPS
+  certificate_arn: "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+  
+  # Optional: Save MCP client configuration to file
+  save_config: "./aws-docs-mcp-config.json"

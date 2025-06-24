@@ -1,0 +1,24 @@
+# Example: Using custom image URI (advanced scenario)
+# Use this when you want full control over the image naming
+
+build:
+  github_url: "https://github.com/awslabs/mcp"
+  subfolder: "src/aws-documentation-mcp-server"
+  push_to_ecr: true
+  
+  # Specify exact image URI - overrides auto-generation
+  image_uri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/production-mcp/aws-docs-server:v2.1.0"
+
+deploy:
+  enabled: true
+  service_name: "production-aws-docs-mcp"
+  cluster_name: "production-cluster"
+  vpc_id: "vpc-prod123"
+  alb_subnet_ids: ["subnet-prod-public-1", "subnet-prod-public-2"]  # Public subnets
+  ecs_subnet_ids: ["subnet-prod-private-1", "subnet-prod-private-2"]  # Private subnets
+  
+  # Production settings
+  cpu: 512
+  memory: 1024
+  certificate_arn: "arn:aws:acm:us-west-2:123456789012:certificate/prod-cert"
+  save_config: "./production-mcp-config.json"

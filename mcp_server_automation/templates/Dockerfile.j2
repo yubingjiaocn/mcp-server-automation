@@ -1,0 +1,82 @@
+# Multi-stage build for MCP server with mcp-proxy CLI
+# Stage 1: Build MCP server dependencies  
+FROM python:3.12-alpine AS python-builder
+
+# Install system dependencies
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /app
+
+# Copy MCP server files
+COPY mcp-server/ ./mcp-server/
+
+# Install MCP server dependencies based on detected package manager
+{% if package_info.manager == 'pip' and package_info.requirements_file %}
+RUN pip install --no-cache-dir -r mcp-server/{{ package_info.requirements_file }}
+
+{% elif package_info.manager == 'uv' and package_info.project_file %}
+# Install uv
+RUN pip install --no-cache-dir uv
+RUN cd mcp-server && \
+    uv sync --frozen --no-dev --no-editable
+
+{% elif package_info.manager == 'poetry' and package_info.project_file %}
+# Install poetry
+RUN pip install --no-cache-dir poetry
+RUN cd mcp-server && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-dev
+
+{% elif package_info.manager == 'pip' and package_info.project_file == 'setup.py' %}
+RUN cd mcp-server && \
+    pip install --no-cache-dir .
+
+{% endif %}
+
+# Stage 2: Runtime image with Node.js and Python
+FROM node:24-bullseye AS runtime
+
+# Install Python (needed for MCP server) and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    ca-certificates \
+    curl \
+    wget \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (for uvx command)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Install mcp-proxy globally
+RUN npm install -g mcp-proxy
+
+# Copy Python dependencies and MCP server from builder stage
+COPY --from=python-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-builder /app/mcp-server /app/mcp-server
+
+# Set up environment
+ENV PYTHONPATH="/app/mcp-server:$PYTHONPATH"
+
+{% if package_info.environment_variables %}
+# Set custom environment variables
+{% for key, value in package_info.environment_variables.items() %}
+ENV {{ key }}="{{ value }}"
+{% endfor %}
+{% endif %}
+
+# Set working directory
+WORKDIR /app
+
+# Health check - check if port 8000 is listening
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD nc -z localhost 8000 || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Use mcp-proxy CLI to start the server with the detected MCP server command
+ENTRYPOINT {{ package_info.entrypoint_command | tojson }}

@@ -1,0 +1,31 @@
+# Example: Secure deployment with private subnets for ECS tasks
+# ALB in public subnets, ECS tasks in private subnets (recommended for production)
+
+build:
+  github_url: "https://github.com/awslabs/mcp"
+  subfolder: "src/aws-documentation-mcp-server"
+  push_to_ecr: true
+
+deploy:
+  enabled: true
+  service_name: "secure-aws-docs-mcp"
+  cluster_name: "production-cluster"
+  vpc_id: "vpc-12345678"
+  
+  # Security best practice: separate public and private subnets
+  alb_subnet_ids:    # Public subnets for internet-facing load balancer
+    - "subnet-public-1a"   # us-east-1a
+    - "subnet-public-1b"   # us-east-1b
+  
+  ecs_subnet_ids:    # Private subnets for ECS tasks (no direct internet access)
+    - "subnet-private-1a"  # us-east-1a
+    - "subnet-private-1b"  # us-east-1b
+  
+  # Production configuration
+  cpu: 512
+  memory: 1024
+  certificate_arn: "arn:aws:acm:us-east-1:123456789012:certificate/prod-cert"
+  save_config: "./secure-mcp-config.json"
+
+# Note: Private subnets require NAT Gateway or VPC endpoints for ECR/internet access
+# The CloudFormation template sets AssignPublicIp: DISABLED for private subnet deployment
