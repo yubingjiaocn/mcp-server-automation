@@ -1,3 +1,8 @@
+# Migration Notice
+
+**This repo has been migrated to `aws-samples`. New repo path is https://github.com/aws-samples/sample-mcp-server-automation . This repo is archived.**
+
+
 # MCP Server Automation CLI
 
 A powerful CLI tool that automates the process of transforming Model Context Protocol (MCP) stdio servers into Docker images deployed on AWS ECS using [mcp-proxy](https://github.com/punkpeye/mcp-proxy). This tool bridges the gap between local MCP servers and remote HTTP-based deployments.
