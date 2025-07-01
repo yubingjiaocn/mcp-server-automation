@@ -15,11 +15,11 @@ build:
   # Required for deployment: Must be true to enable ECR push
   push_to_ecr: true
   
-  # Optional: Custom image name (default: auto-generated from repo/subfolder)
-  # image_name: "custom-filesystem-server"
-  
-  # Optional: Custom ECR repository (default: auto-generated from AWS account)
-  # ecr_repository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-repo"
+  # Optional: Custom Docker image configuration
+  # If not specified, auto-generated when push_to_ecr=true
+  # image:
+  #   repository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-servers/custom-server"
+  #   tag: "v1.0"  # Optional, defaults to dynamic git-based tag
   
   # Optional: AWS region (default: from AWS profile, fallback to us-east-1)
   # aws_region: "us-west-2"

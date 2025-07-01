@@ -1,4 +1,4 @@
-# Example: Using custom image URI (advanced scenario)
+# Example: Using custom image configuration (advanced scenario)
 # Use this when you want full control over the image naming
 
 build:
@@ -6,8 +6,10 @@ build:
   subfolder: "src/aws-documentation-mcp-server"
   push_to_ecr: true
   
-  # Specify exact image URI - overrides auto-generation
-  image_uri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/production-mcp/aws-docs-server:v2.1.0"
+  # Specify exact image configuration - overrides auto-generation
+  image:
+    repository: "123456789012.dkr.ecr.us-west-2.amazonaws.com/production-mcp/aws-docs-server"
+    tag: "v2.1.0"
 
 deploy:
   enabled: true

@@ -8,13 +8,19 @@ from dataclasses import dataclass
 
 
 @dataclass
+class ImageConfig:
+    """Configuration for Docker image."""
+    
+    repository: Optional[str] = None
+    tag: Optional[str] = None
+
+
+@dataclass
 class BuildConfig:
     """Configuration for build command."""
 
     github_url: str
-    image_name: Optional[str] = None
-    image_uri: Optional[str] = None
-    ecr_repository: Optional[str] = None
+    image: Optional[ImageConfig] = None
     subfolder: Optional[str] = None
     branch: Optional[str] = None
     aws_region: str = "us-east-1"
@@ -22,6 +28,29 @@ class BuildConfig:
     push_to_ecr: bool = False
     command_override: Optional[list[str]] = None
     environment_variables: Optional[Dict[str, str]] = None
+    
+    # Computed properties for backward compatibility with existing build logic
+    @property
+    def image_uri(self) -> Optional[str]:
+        """Get the full image URI."""
+        if self.image and self.image.repository:
+            tag = self.image.tag or "latest"
+            return f"{self.image.repository}:{tag}"
+        return None
+    
+    @property 
+    def image_name(self) -> Optional[str]:
+        """Get the image name from repository path."""
+        if self.image and self.image.repository:
+            return self.image.repository.split("/")[-1]
+        return None
+    
+    @property
+    def ecr_repository(self) -> Optional[str]:
+        """Get the ECR repository base URL."""
+        if self.image and self.image.repository and "/" in self.image.repository:
+            return "/".join(self.image.repository.split("/")[:-1])
+        return None
 
 
 @dataclass
@@ -34,7 +63,6 @@ class DeployConfig:
     vpc_id: Optional[str] = None
     alb_subnet_ids: Optional[list[str]] = None  # Public subnets for ALB
     ecs_subnet_ids: Optional[list[str]] = None  # Private subnets for ECS tasks
-    subnet_ids: Optional[list[str]] = None  # Legacy field for backwards compatibility
     aws_region: str = "us-east-1"
     port: int = 8000
     cpu: int = 256
@@ -77,39 +105,35 @@ class ConfigLoader:
             aws_region = build_data.get("aws_region", ConfigLoader._get_aws_region())
             push_to_ecr = build_data.get("push_to_ecr", False)
 
-            # Handle image_uri vs image_name/ecr_repository
-            image_uri = build_data.get("image_uri")
-            image_name = None
-            ecr_repository = None
-
-            if image_uri:
-                # Extract image_name and ecr_repository from image_uri
-                image_name, ecr_repository = ConfigLoader._parse_image_uri(image_uri)
-            else:
-                # Generate image_name and ecr_repository as before
-                image_name = build_data.get("image_name")
-                if not image_name:
-                    github_url = build_data["github_url"]
-                    subfolder = build_data.get("subfolder")
-                    image_name = ConfigLoader._generate_image_name(
-                        github_url, subfolder
-                    )
-
-                ecr_repository = build_data.get("ecr_repository")
-                if not ecr_repository and push_to_ecr:
-                    ecr_repository = ConfigLoader._generate_default_ecr_repository(
-                        aws_region
-                    )
-
-                # Generate image_uri from components
-                if push_to_ecr and ecr_repository:
-                    image_uri = f"{ecr_repository}/{image_name}:latest"
+            # Handle image configuration
+            image_config = None
+            
+            if "image" in build_data:
+                # Use nested image structure if provided
+                image_data = build_data["image"]
+                repository = image_data.get("repository")
+                tag = image_data.get("tag", "latest")
+                
+                if repository:
+                    image_config = ImageConfig(repository=repository, tag=tag)
+            
+            elif push_to_ecr:
+                # Auto-generate image configuration if pushing to ECR
+                github_url = build_data["github_url"]
+                subfolder = build_data.get("subfolder")
+                image_name = ConfigLoader._generate_image_name(github_url, subfolder)
+                ecr_repository = ConfigLoader._generate_default_ecr_repository(aws_region)
+                repository = f"{ecr_repository}/{image_name}"
+                
+                # Generate dynamic tag
+                branch = build_data.get("branch")
+                tag = ConfigLoader._generate_dynamic_tag(github_url, branch)
+                
+                image_config = ImageConfig(repository=repository, tag=tag)
 
             build_config = BuildConfig(
                 github_url=build_data["github_url"],
-                image_name=image_name,
-                image_uri=image_uri,
-                ecr_repository=ecr_repository,
+                image=image_config,
                 subfolder=build_data.get("subfolder"),
                 branch=build_data.get("branch"),
                 aws_region=aws_region,
@@ -123,10 +147,9 @@ class ConfigLoader:
             deploy_data = config_data["deploy"]
             enabled = deploy_data.get("enabled", False)
 
-            # Handle new subnet structure
+            # Handle subnet configuration
             alb_subnet_ids = None
             ecs_subnet_ids = None
-            subnet_ids = None  # Legacy
 
             if "alb_subnet_ids" in deploy_data:
                 alb_subnet_ids = deploy_data["alb_subnet_ids"]
@@ -138,18 +161,6 @@ class ConfigLoader:
                 if isinstance(ecs_subnet_ids, str):
                     ecs_subnet_ids = [s.strip() for s in ecs_subnet_ids.split(",")]
 
-            # Legacy support: if subnet_ids provided but not alb/ecs specific ones
-            if "subnet_ids" in deploy_data:
-                subnet_ids = deploy_data["subnet_ids"]
-                if isinstance(subnet_ids, str):
-                    subnet_ids = [s.strip() for s in subnet_ids.split(",")]
-
-                # Use legacy subnet_ids for both ALB and ECS if new fields not specified
-                if not alb_subnet_ids:
-                    alb_subnet_ids = subnet_ids
-                if not ecs_subnet_ids:
-                    ecs_subnet_ids = subnet_ids
-
             deploy_config = DeployConfig(
                 enabled=enabled,
                 service_name=deploy_data.get("service_name"),
@@ -157,7 +168,6 @@ class ConfigLoader:
                 vpc_id=deploy_data.get("vpc_id"),
                 alb_subnet_ids=alb_subnet_ids,
                 ecs_subnet_ids=ecs_subnet_ids,
-                subnet_ids=subnet_ids,
                 aws_region=deploy_data.get(
                     "aws_region", ConfigLoader._get_aws_region()
                 ),
@@ -188,33 +198,36 @@ class ConfigLoader:
         except Exception:
             return "us-east-1"
 
-    @staticmethod
-    def _parse_image_uri(image_uri: str) -> tuple[str, str]:
-        """Parse image URI to extract image name and ECR repository base.
-
-        Args:
-            image_uri: Full image URI like '123.dkr.ecr.us-east-1.amazonaws.com/repo/image:tag'
-
-        Returns:
-            tuple: (image_name, ecr_repository_base)
-        """
+    @staticmethod 
+    def _generate_dynamic_tag(github_url: str, branch: Optional[str] = None) -> str:
+        """Generate dynamic image tag using GitHub API commit hash and timestamp."""
+        import requests
+        from datetime import datetime
+        
         try:
-            # Split by '/' to get parts
-            parts = image_uri.split("/")
-            if len(parts) < 2:
-                raise ValueError("Invalid image URI format")
+            # Extract owner and repo from GitHub URL
+            parts = github_url.replace("https://github.com/", "").split("/")
+            if len(parts) >= 2:
+                owner, repo = parts[0], parts[1]
+                branch_ref = branch if branch else "HEAD"
+                api_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{branch_ref}"
+                response = requests.get(api_url, timeout=30)
+                if response.status_code == 200:
+                    commit_data = response.json()
+                    git_hash = commit_data["sha"][:8]
+                else:
+                    git_hash = "nocommit"
+            else:
+                git_hash = "nocommit"
+        except Exception:
+            git_hash = "nocommit"
 
-            # Last part contains image:tag
-            image_with_tag = parts[-1]
-            image_name = image_with_tag.split(":")[0]  # Remove tag
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        if branch:
+            return f"{git_hash}-{branch}-{timestamp}"
+        else:
+            return f"{git_hash}-{timestamp}"
 
-            # Everything before the last '/' is the registry/repository base
-            ecr_repository = "/".join(parts[:-1])
-
-            return image_name, ecr_repository
-
-        except Exception as e:
-            raise ValueError(f"Failed to parse image URI '{image_uri}': {e}")
 
     @staticmethod
     def _generate_default_ecr_repository(aws_region: str) -> str:

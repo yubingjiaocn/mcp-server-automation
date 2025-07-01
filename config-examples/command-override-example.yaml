@@ -1,16 +1,16 @@
 # Example: Using command override and environment variables
-# This configuration demonstrates the recently added features for customizing MCP server commands
+# This configuration demonstrates command override, which is required when:
+# - README only contains Docker commands
+# - No suitable startup command can be auto-detected
+# - You want to specify custom arguments or flags
 
 build:
   github_url: "https://github.com/awslabs/mcp"
   subfolder: "src/aws-documentation-mcp-server"
   
-  # NEW FEATURE: Command Override
-  # Override the detected start command with a custom command
-  # This is useful when:
-  # - The auto-detection fails to find the correct command
-  # - You need custom arguments or flags
-  # - You want to use a different entry point
+  # Command Override - Required when README has only Docker commands
+  # The tool will throw an error if it can't find a suitable non-Docker command
+  # and no command_override is provided
   command_override:
     - "python"
     - "-m"

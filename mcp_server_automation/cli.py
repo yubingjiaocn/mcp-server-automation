@@ -49,28 +49,21 @@ def cli(config):
             return
 
         # Validate subnet configuration
-        if deploy_config.alb_subnet_ids and deploy_config.ecs_subnet_ids:
-            # New subnet structure
-            if len(deploy_config.alb_subnet_ids) < 2:
-                click.echo(
-                    "Error: deploy.enabled requires at least 2 ALB subnet IDs for load balancer"
-                )
-                return
-            if len(deploy_config.ecs_subnet_ids) < 1:
-                click.echo(
-                    "Error: deploy.enabled requires at least 1 ECS subnet ID for tasks"
-                )
-                return
-        elif deploy_config.subnet_ids:
-            # Legacy subnet structure
-            if len(deploy_config.subnet_ids) < 2:
-                click.echo(
-                    "Error: deploy.enabled requires at least 2 subnet IDs for ALB deployment"
-                )
-                return
-        else:
+        if not deploy_config.alb_subnet_ids or not deploy_config.ecs_subnet_ids:
             click.echo(
-                "Error: deploy.enabled requires either alb_subnet_ids+ecs_subnet_ids or subnet_ids"
+                "Error: deploy.enabled requires both alb_subnet_ids and ecs_subnet_ids"
+            )
+            return
+        
+        if len(deploy_config.alb_subnet_ids) < 2:
+            click.echo(
+                "Error: deploy.enabled requires at least 2 ALB subnet IDs for load balancer"
+            )
+            return
+        
+        if len(deploy_config.ecs_subnet_ids) < 1:
+            click.echo(
+                "Error: deploy.enabled requires at least 1 ECS subnet ID for tasks"
             )
             return
 
@@ -112,8 +105,8 @@ def cli(config):
             cpu=deploy_config.cpu,
             memory=deploy_config.memory,
             vpc_id=deploy_config.vpc_id,
-            alb_subnet_ids=deploy_config.alb_subnet_ids or deploy_config.subnet_ids,
-            ecs_subnet_ids=deploy_config.ecs_subnet_ids or deploy_config.subnet_ids,
+            alb_subnet_ids=deploy_config.alb_subnet_ids,
+            ecs_subnet_ids=deploy_config.ecs_subnet_ids,
             certificate_arn=deploy_config.certificate_arn,
         )
 

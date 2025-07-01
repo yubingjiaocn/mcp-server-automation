@@ -6,6 +6,6 @@ __email__ = "mcp-automation@example.com"
 __description__ = "CLI tool to automate MCP server deployment to AWS ECS"
 
 from .cli import cli
-from .mcp_automate import main
+from .__main__ import main
 
 __all__ = ["cli", "main"]

@@ -7,7 +7,6 @@ import re
 import json
 import toml
 import base64
-from datetime import datetime
 from typing import Optional, List
 
 import requests
@@ -15,46 +14,12 @@ import zipfile
 import boto3
 import docker
 from jinja2 import Template
+from .config import ConfigLoader
 
 
 class BuildCommand:
     """Handles building and pushing MCP server Docker images."""
 
-    def _generate_image_tag(self, github_url: str, branch: Optional[str] = None) -> str:
-        """Generate dynamic image tag using GitHub API commit hash and timestamp."""
-        try:
-            # Extract owner and repo from GitHub URL
-            # e.g., https://github.com/awslabs/mcp -> awslabs/mcp
-            parts = github_url.replace("https://github.com/", "").split("/")
-            if len(parts) >= 2:
-                owner, repo = parts[0], parts[1]
-
-                # Get latest commit hash from GitHub API
-                # Use specific branch if provided, otherwise use HEAD (default branch)
-                branch_ref = branch if branch else "HEAD"
-                api_url = (
-                    f"https://api.github.com/repos/{owner}/{repo}/commits/{branch_ref}"
-                )
-                response = requests.get(api_url, timeout=30)
-                if response.status_code == 200:
-                    commit_data = response.json()
-                    git_hash = commit_data["sha"][:8]  # Use first 8 characters
-                else:
-                    git_hash = "nocommit"
-            else:
-                git_hash = "nocommit"
-        except Exception:
-            # Fallback if API call fails
-            git_hash = "nocommit"
-
-        # Generate timestamp in format YYYYMMDD-HHMMSS
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-        # Include branch name in tag if specified
-        if branch:
-            return f"{git_hash}-{branch}-{timestamp}"
-        else:
-            return f"{git_hash}-{timestamp}"
 
     def __init__(self):
         self.docker_client = docker.from_env()
@@ -92,7 +57,7 @@ class BuildCommand:
 
             # Step 3: Build Docker image
             # Generate dynamic tag
-            dynamic_tag = self._generate_image_tag(github_url, branch)
+            dynamic_tag = ConfigLoader._generate_dynamic_tag(github_url, branch)
 
             if push_to_ecr and ecr_repository:
                 image_tag = f"{ecr_repository}/{image_name}:{dynamic_tag}"
@@ -222,9 +187,37 @@ class BuildCommand:
             print(f"Using command override: {' '.join(command_override)}")
         else:
             # Priority 2: Try to extract from README files first (most reliable)
-            package_info["start_command"] = self._extract_start_command_from_readme(
+            readme_command, has_docker_commands, has_any_commands = self._extract_start_command_from_readme(
                 mcp_server_path
             )
+            package_info["start_command"] = readme_command
+            
+            # Validate bootstrap command requirements
+            if not readme_command:
+                if has_docker_commands:
+                    # Only Docker commands found, no suitable non-Docker commands
+                    raise ValueError(
+                        "README contains only Docker commands for MCP server configuration. "
+                        "Please provide a command_override in your configuration to specify "
+                        "how to run the MCP server directly (without Docker). "
+                        "Example:\n"
+                        "build:\n"
+                        "  command_override:\n"
+                        "    - \"python\"\n"
+                        "    - \"-m\"\n"
+                        "    - \"your_server_module\""
+                    )
+                elif has_any_commands:
+                    # Commands found but couldn't parse them properly
+                    raise ValueError(
+                        "Could not parse MCP server commands from README. "
+                        "Please provide a command_override in your configuration. "
+                        "Example:\n"
+                        "build:\n"
+                        "  command_override:\n"
+                        "    - \"python\"\n"
+                        "    - \"server.py\""
+                    )
 
         # Check for different dependency files and extract start command
         if os.path.exists(os.path.join(mcp_server_path, "pyproject.toml")):
@@ -252,10 +245,18 @@ class BuildCommand:
                     self._extract_start_command_from_setup_py(mcp_server_path)
                 )
 
-        # Fallback: detect common patterns
-        if not package_info["start_command"]:
-            package_info["start_command"] = self._detect_fallback_start_command(
-                mcp_server_path
+        # Final validation: ensure we have a command if no command_override was provided
+        if not package_info["start_command"] and not command_override:
+            raise ValueError(
+                "Could not detect MCP server startup command from README or project files. "
+                "Please provide a command_override in your configuration to specify "
+                "how to run the MCP server. "
+                "Example:\n"
+                "build:\n"
+                "  command_override:\n"
+                "    - \"python\"\n"
+                "    - \"-m\"\n"
+                "    - \"your_server_module\""
             )
 
         # Generate the complete ENTRYPOINT command
@@ -274,29 +275,31 @@ class BuildCommand:
         if not start_command:
             return base_command + ["python", "-m", "server"]
 
+        # Format: mcp-proxy --debug --port 8000 --shell <command> [-- <args>]
         if len(start_command) == 1:
-            # Single command, no arguments
             return base_command + start_command
-
-        # Split command and arguments
-        command = start_command[0]
-        args = start_command[1:]
-
-        # Format: mcp-proxy --debug --port 8000 --shell <command> -- <args>
-        return base_command + [command] + ["--"] + args
+        else:
+            return base_command + [start_command[0]] + ["--"] + start_command[1:]
 
     def _extract_start_command_from_readme(
         self, mcp_server_path: str
-    ) -> Optional[List[str]]:
-        """Extract start command from README files containing MCP server JSON config."""
+    ) -> tuple[Optional[List[str]], bool, bool]:
+        """Extract start command from README files containing MCP server JSON config.
+        
+        Returns:
+            tuple: (command, has_docker_commands, has_any_commands)
+        """
         readme_files = [
             "README.md",
-            "README.txt",
+            "README.txt", 
             "README.rst",
             "readme.md",
             "readme.txt",
         ]
 
+        has_docker_commands = False
+        has_any_commands = False
+        
         for readme_file in readme_files:
             readme_path = os.path.join(mcp_server_path, readme_file)
             if os.path.exists(readme_path):
@@ -313,9 +316,10 @@ class BuildCommand:
                             config = json.loads(json_str)
                             servers = config.get("mcpServers", {})
 
-                            # Use first server with valid command (prefer non-Docker)
+                            # Check all server commands to detect what's available
                             for server_config in servers.values():
                                 if "command" in server_config:
+                                    has_any_commands = True
                                     command = [server_config["command"]]
                                     if (
                                         "args" in server_config
@@ -323,19 +327,22 @@ class BuildCommand:
                                     ):
                                         command.extend(server_config["args"])
 
-                                    # Skip Docker commands, prefer others
-                                    if command[0] != "docker":
+                                    # Track if we found Docker commands
+                                    if command[0] == "docker":
+                                        has_docker_commands = True
+                                    else:
+                                        # Return first non-Docker command found
                                         print(
                                             f"Found MCP server command: {' '.join(command)}"
                                         )
-                                        return command
+                                        return command, has_docker_commands, has_any_commands
                         except json.JSONDecodeError:
                             continue
 
                 except (IOError, UnicodeDecodeError):
                     continue
 
-        return None
+        return None, has_docker_commands, has_any_commands
 
     def _extract_start_command_from_pyproject(
         self, content: str
@@ -389,29 +396,6 @@ class BuildCommand:
         except Exception:
             return None
 
-    def _detect_fallback_start_command(self, mcp_server_path: str) -> List[str]:
-        """Detect start command using common patterns."""
-        # Common MCP server file patterns
-        common_files = [
-            ("server.py", ["python", "server.py"]),
-            ("main.py", ["python", "main.py"]),
-            ("app.py", ["python", "app.py"]),
-            ("__main__.py", ["python", "-m", os.path.basename(mcp_server_path)]),
-        ]
-
-        for filename, command in common_files:
-            if os.path.exists(os.path.join(mcp_server_path, filename)):
-                return command
-
-        # If no specific file found, try to find any .py file with "mcp" or "server" in name
-        for file in os.listdir(mcp_server_path):
-            if file.endswith(".py") and (
-                "mcp" in file.lower() or "server" in file.lower()
-            ):
-                return ["python", file]
-
-        # Last resort: assume there's a server.py or use module name
-        return ["python", "server.py"]
 
     def _build_docker_image(
         self, build_context: str, image_tag: str, mcp_server_path: str

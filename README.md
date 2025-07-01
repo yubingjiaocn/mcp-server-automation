@@ -19,6 +19,18 @@ A powerful CLI tool that automates the process of transforming Model Context Pro
 - **AWS ECR repository** (created if using ECR push)
 - **AWS ECS cluster** (created if deploying)
 
+### Install uv
+
+```bash
+# On macOS and Linux.
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```powershell
+# On Windows.
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
 ## 📖 Quick Start
 
 ### Using uvx (Recommended)
@@ -27,7 +39,7 @@ The easiest way to use this tool is with `uvx`, which handles dependencies autom
 
 ```bash
 # Install from a Git repository
-uvx --from git+https://github.com/yubingjiaocn/mcp-server-automation mcp-server-automation --config your-config.yaml
+uvx --from git+https://github.com/aws-samples/sample-mcp-server-automation mcp-server-automation --config your-config.yaml
 ```
 
 ### Local Development Setup
@@ -56,38 +68,36 @@ The tool uses a unified YAML configuration file with `build` and `deploy` sectio
 build:
   # Required: GitHub repository URL
   github_url: "https://github.com/awslabs/mcp"
-  
+
   # Optional: Subfolder if MCP server is not in root
   subfolder: "src/aws-documentation-mcp-server"
-  
+
   # Optional: Git branch to build from (default: main)
-  branch: "develop"
-  
+  branch: "main"
+
   # Required for deployment: Must be true to enable ECR push and deployment
   push_to_ecr: true
-  
-  # Optional: Custom image URI (overrides auto-generation)
-  # image_uri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/custom-repo/my-server:v1.0"
-  
-  # Optional: Custom image name (auto-generated if not provided)
-  # image_name: "my-mcp-server"
-  
-  # Optional: ECR repository (auto-generated if push_to_ecr=true)
-  # ecr_repository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-servers"
-  
+
+  # Optional: Custom Docker image configuration
+  # If not specified, auto-generated when push_to_ecr=true
+  # image:
+  #   repository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-servers/my-mcp-server"
+  #   tag: "v1.0"  # Optional, defaults to dynamic git-based tag
+
   # Optional: AWS region (default: from AWS profile, fallback to us-east-1)
   # aws_region: "us-west-2"
-  
+
   # Optional: Custom Dockerfile path
   # dockerfile_path: "./custom.Dockerfile"
-  
+
   # Optional: Override auto-detected MCP server command
+  # Required when README only contains Docker commands or no suitable command is found
   # command_override:
   #   - "python"
   #   - "-m"
   #   - "my_server_module"
   #   - "--verbose"
-  
+
   # Optional: Set environment variables in the container
   # environment_variables:
   #   LOG_LEVEL: "debug"
@@ -97,17 +107,17 @@ build:
 deploy:
   # Required: Enable deployment (only works when push_to_ecr=true)
   enabled: true
-  
+
   # Required: ECS service name
   service_name: "my-mcp-service"
-  
+
   # Required: ECS cluster name
   cluster_name: "my-ecs-cluster"
-  
+
   # Required: VPC ID where resources will be created
   vpc_id: "vpc-12345678"
-  
-  # Required: Subnet configuration 
+
+  # Required: Subnet configuration
   alb_subnet_ids:    # Public subnets for ALB (minimum 2 in different AZs)
     - "subnet-public-1"
     - "subnet-public-2"
@@ -117,16 +127,16 @@ deploy:
 
   # Optional: Container port (default: 8000)
   port: 8000
-  
+
   # Optional: Task CPU units (default: 256)
   cpu: 256
-  
+
   # Optional: Task memory in MB (default: 512)
   memory: 512
-  
+
   # Optional: SSL certificate ARN for HTTPS
   certificate_arn: "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
-  
+
   # Optional: Save MCP client configuration to file
   save_config: "./mcp-config.json"
 ```
@@ -174,10 +184,19 @@ deploy:
   # ... deployment configuration
 ```
 
-### Command Override
+### Command Detection and Override
 
-Override the automatically detected MCP server command:
+The tool automatically detects MCP server startup commands from:
+1. **README files** - JSON configuration blocks with `mcpServers`
+2. **pyproject.toml** - Console scripts or main modules  
+3. **setup.py** - Entry points and scripts
 
+**Command Override Required When:**
+- README only contains Docker commands (not suitable for containerization)
+- No suitable startup command can be detected
+- You want to specify exact startup parameters
+
+**Example:**
 ```yaml
 build:
   github_url: "https://github.com/my-org/custom-mcp-server"
@@ -190,6 +209,21 @@ build:
     - "3000"
   push_to_ecr: true
 ```
+
+**Error Example:**
+If your MCP server README only shows:
+```json
+{
+  "mcpServers": {
+    "myserver": {
+      "command": "docker",
+      "args": ["run", "myserver:latest"]
+    }
+  }
+}
+```
+
+You'll get an error requiring `command_override` to specify the direct startup command.
 
 ### Environment Variables in Container
 
@@ -317,17 +351,13 @@ npm install -g mcp-proxy
 mcp-proxy https://your-alb-url.amazonaws.com/mcp
 ```
 
-## 🤝 Contributing
+## Security
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
-## 📄 License
+## License
 
-This project is licensed under the MIT-0 License.
+This library is licensed under the MIT-0 License. See the LICENSE file.
 
 ## 🆘 Support
 
